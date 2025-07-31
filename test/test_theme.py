@@ -41,6 +41,37 @@ from picard.ui import theme_detect
 import picard.ui.theme as theme_mod
 
 
+class DummyPalette(QtGui.QPalette):
+    def __init__(self):
+        super().__init__()
+        # Set a unique color to detect override
+        self.setColor(
+            QtGui.QPalette.ColorGroup.Active,
+            QtGui.QPalette.ColorRole.Window,
+            QtGui.QColor(123, 123, 123),
+        )
+
+
+class DummyApp:
+    def __init__(self, palette=None):
+        self._palette = palette or DummyPalette()
+
+    def setStyle(self, style):
+        pass
+
+    def setStyleSheet(self, stylesheet):
+        pass
+
+    def palette(self):
+        return self._palette
+
+    def setPalette(self, palette):
+        self._palette = palette
+
+    def style(self):
+        return None
+
+
 @pytest.fixture
 def kde_config_dir(tmp_path: Path) -> Path:
     config_dir = tmp_path / ".config"
@@ -394,47 +425,23 @@ def test_linux_dark_theme_palette(
 
     # Mock styleHints to return None so manual palette setting is used
     with patch("PyQt6.QtGui.QGuiApplication.styleHints", return_value=None):
-        # Mock app and palette
-        class DummyPalette(QtGui.QPalette):
-            def __init__(self):
-                super().__init__()
-                # Set a unique color to detect override
-                self.setColor(
-                    QtGui.QPalette.ColorGroup.Active,
-                    QtGui.QPalette.ColorRole.Window,
-                    QtGui.QColor(123, 123, 123),
-                )
-                # Set base color to dark or light to control self._dark_theme
-                if already_dark_theme:
-                    self.setColor(
-                        QtGui.QPalette.ColorGroup.Active,
-                        QtGui.QPalette.ColorRole.Base,
-                        QtGui.QColor(0, 0, 0),
-                    )
-                else:
-                    self.setColor(
-                        QtGui.QPalette.ColorGroup.Active,
-                        QtGui.QPalette.ColorRole.Base,
-                        QtGui.QColor(255, 255, 255),
-                    )
+        # Create custom palette for this test
+        palette = DummyPalette()
+        # Set base color to dark or light to control self._dark_theme
+        if already_dark_theme:
+            palette.setColor(
+                QtGui.QPalette.ColorGroup.Active,
+                QtGui.QPalette.ColorRole.Base,
+                QtGui.QColor(0, 0, 0),
+            )
+        else:
+            palette.setColor(
+                QtGui.QPalette.ColorGroup.Active,
+                QtGui.QPalette.ColorRole.Base,
+                QtGui.QColor(255, 255, 255),
+            )
 
-        class DummyApp:
-            def __init__(self):
-                self._palette = DummyPalette()
-
-            def setStyle(self, style):
-                pass
-
-            def setStyleSheet(self, stylesheet):
-                pass
-
-            def palette(self):
-                return self._palette
-
-            def setPalette(self, palette):
-                self._palette = palette
-
-        app = DummyApp()
+        app = DummyApp(palette)
         theme.setup(app)
         palette = app._palette
         if expect_dark_palette:
@@ -497,29 +504,6 @@ def test_windows_dark_theme_palette(monkeypatch, apps_use_light_theme, expected_
 
     # Mock styleHints to return None so manual palette setting is used
     with patch("PyQt6.QtGui.QGuiApplication.styleHints", return_value=None):
-
-        class DummyPalette(QtGui.QPalette):
-            pass
-
-        class DummyApp:
-            def __init__(self):
-                self._palette = DummyPalette()
-
-            def setStyle(self, style):
-                pass
-
-            def setStyleSheet(self, stylesheet):
-                pass
-
-            def palette(self):
-                return self._palette
-
-            def setPalette(self, palette):
-                self._palette = palette
-
-            def style(self):
-                return None
-
         app = DummyApp()
         theme.setup(app)
         palette = app._palette
@@ -639,47 +623,23 @@ def test_linux_dark_palette_override_only_if_not_already_dark(
 
     # Mock styleHints to return None so manual palette setting is used
     with patch("PyQt6.QtGui.QGuiApplication.styleHints", return_value=None):
+        # Create custom palette for this test
+        palette = DummyPalette()
+        # Set base color to dark or light to control self._dark_theme
+        if already_dark_theme:
+            palette.setColor(
+                QtGui.QPalette.ColorGroup.Active,
+                QtGui.QPalette.ColorRole.Base,
+                QtGui.QColor(0, 0, 0),
+            )
+        else:
+            palette.setColor(
+                QtGui.QPalette.ColorGroup.Active,
+                QtGui.QPalette.ColorRole.Base,
+                QtGui.QColor(255, 255, 255),
+            )
 
-        class DummyPalette(QtGui.QPalette):
-            def __init__(self):
-                super().__init__()
-                # Set a unique color to detect override
-                self.setColor(
-                    QtGui.QPalette.ColorGroup.Active,
-                    QtGui.QPalette.ColorRole.Window,
-                    QtGui.QColor(123, 123, 123),
-                )
-                # Set base color to dark or light to control self._dark_theme
-                if already_dark_theme:
-                    self.setColor(
-                        QtGui.QPalette.ColorGroup.Active,
-                        QtGui.QPalette.ColorRole.Base,
-                        QtGui.QColor(0, 0, 0),
-                    )
-                else:
-                    self.setColor(
-                        QtGui.QPalette.ColorGroup.Active,
-                        QtGui.QPalette.ColorRole.Base,
-                        QtGui.QColor(255, 255, 255),
-                    )
-
-        class DummyApp:
-            def __init__(self):
-                self._palette = DummyPalette()
-
-            def setStyle(self, style):
-                pass
-
-            def setStyleSheet(self, stylesheet):
-                pass
-
-            def palette(self):
-                return self._palette
-
-            def setPalette(self, palette):
-                self._palette = palette
-
-        app = DummyApp()
+        app = DummyApp(palette)
         theme = theme_mod.BaseTheme()
         theme._detect_linux_dark_mode = lambda: linux_dark_mode_detected
         theme.setup(app)
