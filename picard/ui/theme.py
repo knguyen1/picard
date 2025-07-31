@@ -61,16 +61,12 @@ DARK_PALETTE_COLORS = {
         QtGui.QPalette.ColorGroup.Disabled,
         QtGui.QPalette.ColorRole.Text,
     ): QtCore.Qt.GlobalColor.darkGray,
-    (QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Light): QtGui.QColor(
-        0, 0, 0, 0
-    ),
+    (QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Light): QtGui.QColor(0, 0, 0, 0),
     (
         QtGui.QPalette.ColorGroup.Disabled,
         QtGui.QPalette.ColorRole.ButtonText,
     ): QtCore.Qt.GlobalColor.darkGray,
-    (QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Base): QtGui.QColor(
-        60, 60, 60
-    ),
+    (QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Base): QtGui.QColor(60, 60, 60),
     (
         QtGui.QPalette.ColorGroup.Inactive,
         QtGui.QPalette.ColorRole.Highlight,
@@ -91,9 +87,7 @@ if IS_MACOS:
     except ImportError:
         AppKit = None
 
-    OS_SUPPORTS_THEMES = bool(AppKit) and hasattr(
-        AppKit.NSAppearance, "_darkAquaAppearance"
-    )
+    OS_SUPPORTS_THEMES = bool(AppKit) and hasattr(AppKit.NSAppearance, "_darkAquaAppearance")
 
 elif IS_HAIKU:
     OS_SUPPORTS_THEMES = False
@@ -120,11 +114,13 @@ class UiTheme(Enum):
         return cls.DEFAULT
 
 
-AVAILABLE_UI_THEMES = [UiTheme.DEFAULT]
-if IS_WIN or IS_MACOS:
-    AVAILABLE_UI_THEMES.extend([UiTheme.LIGHT, UiTheme.DARK])
-elif not IS_HAIKU:
-    AVAILABLE_UI_THEMES.extend([UiTheme.SYSTEM])
+# Theme availability based on platform capabilities
+if IS_HAIKU:
+    # Haiku doesn't support themes - UI is hidden anyway, but keep empty for consistency
+    AVAILABLE_UI_THEMES = []
+else:
+    # All other platforms: consistent structure
+    AVAILABLE_UI_THEMES = [UiTheme.DEFAULT, UiTheme.LIGHT, UiTheme.DARK]
 
 
 class MacOverrideStyle(QtWidgets.QProxyStyle):
@@ -165,12 +161,8 @@ class BaseTheme:
         self._loaded_config_theme = UiTheme(config.setting["ui_theme"])
 
         # Use the new fusion style from PyQt6 for a modern and consistent look
-        # across all OSes.
-        if (
-            not IS_MACOS
-            and not IS_HAIKU
-            and self._loaded_config_theme != UiTheme.SYSTEM
-        ):
+        # across all OSes, except when using system default theme on Linux.
+        if not IS_MACOS and not IS_HAIKU and not (not IS_WIN and self._loaded_config_theme == UiTheme.DEFAULT):
             app.setStyle("Fusion")
         elif IS_MACOS:
             app.setStyle(MacOverrideStyle(app.style()))
@@ -191,17 +183,13 @@ class BaseTheme:
                 style_hints.setColorScheme(Qt.ColorScheme.Unknown)
 
         palette = QtGui.QPalette(app.palette())
-        base_color = palette.color(
-            QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Base
-        )
+        base_color = palette.color(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Base)
         self._dark_theme = base_color.lightness() < 128
         self._accent_color = None
         if self._dark_theme:
-            self._accent_color = palette.color(
-                QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight
-            )
+            self._accent_color = palette.color(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight)
 
-        # Linux-specific: If SYSTEM theme, try to detect system dark mode
+        # Linux-specific: If DEFAULT theme, try to detect system dark mode
         # Do not apply override if already dark theme
         is_dark_theme = self.is_dark_theme
         if (
@@ -209,7 +197,7 @@ class BaseTheme:
             and not IS_WIN
             and not IS_MACOS
             and not IS_HAIKU
-            and self._loaded_config_theme == UiTheme.SYSTEM
+            and self._loaded_config_theme == UiTheme.DEFAULT
         ):
             is_dark_theme = self._detect_linux_dark_mode()
             if is_dark_theme:
@@ -226,9 +214,7 @@ class BaseTheme:
                         else:
                             palette.setColor(key, value)
                 self._dark_theme = True
-                self._accent_color = palette.color(
-                    QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight
-                )
+                self._accent_color = palette.color(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight)
             else:
                 self._dark_theme = False
                 self._accent_color = None
@@ -269,9 +255,7 @@ class BaseTheme:
         """Update the application palette."""
         if accent_color:
             accent_text_color = (
-                QtCore.Qt.GlobalColor.white
-                if accent_color.lightness() < 160
-                else QtCore.Qt.GlobalColor.black
+                QtCore.Qt.GlobalColor.white if accent_color.lightness() < 160 else QtCore.Qt.GlobalColor.black
             )
             palette.setColor(
                 QtGui.QPalette.ColorGroup.Active,
@@ -285,9 +269,7 @@ class BaseTheme:
             )
 
             link_color = QtGui.QColor()
-            link_color.setHsl(
-                accent_color.hue(), accent_color.saturation(), 160, accent_color.alpha()
-            )
+            link_color.setHsl(accent_color.hue(), accent_color.saturation(), 160, accent_color.alpha())
             palette.setColor(QtGui.QPalette.ColorRole.Link, link_color)
 
 
@@ -321,9 +303,7 @@ class WindowsTheme(BaseTheme):
         """Get Windows accent color."""
         accent_color = None
         try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM"
-            ) as key:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM") as key:
                 accent_color_dword = winreg.QueryValueEx(key, "ColorizationColor")[0]
                 accent_color_hex = f"#{accent_color_dword & 0xFFFFFF:06x}"
                 accent_color = QtGui.QColor(accent_color_hex)
@@ -359,10 +339,12 @@ elif IS_MACOS:
         # Default procedure to identify the current appearance (theme)
         appearance = AppKit.NSAppearance.currentAppearance()
         try:
-            basic_appearance = appearance.bestMatchFromAppearancesWithNames_([
-                AppKit.NSAppearanceNameAqua,
-                AppKit.NSAppearanceNameDarkAqua,
-            ])
+            basic_appearance = appearance.bestMatchFromAppearancesWithNames_(
+                [
+                    AppKit.NSAppearanceNameAqua,
+                    AppKit.NSAppearanceNameDarkAqua,
+                ]
+            )
             dark_appearance = basic_appearance == AppKit.NSAppearanceNameDarkAqua
         except AttributeError:
             pass
