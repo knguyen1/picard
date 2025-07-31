@@ -20,9 +20,12 @@
 
 """Tests for theme changes - focusing on new D-Bus functionality and Qt ColorScheme integration."""
 
-import pytest
 from unittest.mock import Mock, patch
+
 from PyQt6.QtCore import Qt
+
+import pytest
+
 
 # Mock PyQt6.QtDBus imports for testing on systems without D-Bus
 with patch.dict(
@@ -58,9 +61,7 @@ class TestDBusThemeDetectorChanges:
             (None, None),  # no value
         ],
     )
-    def test_detect_freedesktop_portal_color_scheme_values(
-        self, dbus_value, expected_result
-    ):
+    def test_detect_freedesktop_portal_color_scheme_values(self, dbus_value, expected_result):
         """Test freedesktop portal color scheme detection with different D-Bus values."""
         detector = theme_detect.DBusThemeDetector()
 
@@ -71,9 +72,7 @@ class TestDBusThemeDetectorChanges:
         # Mock D-Bus reply
         mock_reply = Mock()
         mock_reply.type.return_value = Mock()  # Not an error message
-        mock_reply.arguments.return_value = (
-            [dbus_value] if dbus_value is not None else []
-        )
+        mock_reply.arguments.return_value = [dbus_value] if dbus_value is not None else []
         mock_interface.call.return_value = mock_reply
 
         detector.portal_interface = mock_interface
@@ -101,9 +100,7 @@ class TestDBusThemeDetectorChanges:
             (None, None, None),
         ],
     )
-    def test_detect_gnome_color_scheme_dbus_fallback(
-        self, color_scheme_value, gtk_theme_value, expected_result
-    ):
+    def test_detect_gnome_color_scheme_dbus_fallback(self, color_scheme_value, gtk_theme_value, expected_result):
         """Test GNOME D-Bus detection with color-scheme and gtk-theme fallback."""
         detector = theme_detect.DBusThemeDetector()
 
@@ -164,15 +161,11 @@ class TestDBusThemeDetectorChanges:
             (None, True, False),  # D-Bus fails, subprocess fails
         ],
     )
-    def test_hybrid_detection_dbus_priority(
-        self, dbus_result, subprocess_called, expected_result
-    ):
+    def test_hybrid_detection_dbus_priority(self, dbus_result, subprocess_called, expected_result):
         """Test that hybrid detection methods prioritize D-Bus over subprocess."""
         with patch.object(theme_detect, "get_dbus_detector") as mock_get_detector:
             mock_detector = Mock()
-            mock_detector.detect_freedesktop_portal_color_scheme.return_value = (
-                dbus_result
-            )
+            mock_detector.detect_freedesktop_portal_color_scheme.return_value = dbus_result
             mock_get_detector.return_value = mock_detector
 
             with patch("subprocess.run") as mock_subprocess:
@@ -355,9 +348,7 @@ class TestLinuxSystemThemeIntegration:
             ),  # Both D-Bus methods fail, fallback methods would be tried
         ],
     )
-    def test_linux_system_theme_detection_priority_logic(
-        self, dbus_methods_results, expected_result
-    ):
+    def test_linux_system_theme_detection_priority_logic(self, dbus_methods_results, expected_result):
         """Test that Linux system theme detection respects D-Bus priority logic."""
         # Test the detection logic without full theme setup
         with (

@@ -26,14 +26,14 @@ import os
 from pathlib import Path
 import subprocess  # noqa: S404
 
-from picard import log
-
 # D-Bus imports - PyQt6 is already a dependency
 from PyQt6.QtDBus import (
     QDBusConnection,
     QDBusInterface,
     QDBusMessage,
 )
+
+from picard import log
 
 
 class DBusThemeDetector:
@@ -85,9 +85,7 @@ class DBusThemeDetector:
             if not self.portal_interface or not self.portal_interface.isValid():
                 return None
             # Call the Read method to get color-scheme setting
-            reply = self.portal_interface.call(
-                "Read", "org.freedesktop.appearance", "color-scheme"
-            )
+            reply = self.portal_interface.call("Read", "org.freedesktop.appearance", "color-scheme")
 
             if reply.type() == QDBusMessage.MessageType.ErrorMessage:
                 return None
@@ -118,9 +116,7 @@ class DBusThemeDetector:
             if not self.gnome_interface or not self.gnome_interface.isValid():
                 return None
             # Get the color-scheme property from org.gnome.desktop.interface using dconf
-            reply = self.gnome_interface.call(
-                "Read", "/org/gnome/desktop/interface/color-scheme"
-            )
+            reply = self.gnome_interface.call("Read", "/org/gnome/desktop/interface/color-scheme")
 
             if reply.type() != QDBusMessage.MessageType.ErrorMessage:
                 value = reply.arguments()[0] if reply.arguments() else None
@@ -134,9 +130,7 @@ class DBusThemeDetector:
 
         # Try gtk-theme as fallback
         try:
-            reply = self.gnome_interface.call(
-                "Read", "/org/gnome/desktop/interface/gtk-theme"
-            )
+            reply = self.gnome_interface.call("Read", "/org/gnome/desktop/interface/gtk-theme")
 
             if reply.type() != QDBusMessage.MessageType.ErrorMessage:
                 value = reply.arguments()[0] if reply.arguments() else None
