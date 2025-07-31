@@ -20,13 +20,167 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-"""Dark mode detection utilities for various Linux desktop environments."""
+"""Dark mode detection for Linux desktop environments using D-Bus with subprocess fallback."""
 
 import os
 from pathlib import Path
 import subprocess  # noqa: S404
 
 from picard import log
+
+# D-Bus imports - PyQt6 is already a dependency
+from PyQt6.QtDBus import (
+    QDBusConnection,
+    QDBusInterface,
+    QDBusMessage,
+)
+
+
+class DBusThemeDetector:
+    """D-Bus-based theme detection for Linux desktop environments."""
+
+    def __init__(self):
+        self.session_bus = None
+        self.portal_interface = None
+        self.gnome_interface = None
+        self._initialize_dbus()
+
+    def _initialize_dbus(self) -> None:
+        """Initialize D-Bus connection and interfaces."""
+        try:
+            self.session_bus = QDBusConnection.sessionBus()
+            if not self.session_bus.isConnected():
+                return
+
+            # Initialize freedesktop.org settings portal interface
+            self.portal_interface = QDBusInterface(
+                "org.freedesktop.portal.Desktop",
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Settings",
+                self.session_bus,
+            )
+
+            # Initialize GNOME settings interface
+            self.gnome_interface = QDBusInterface(
+                "ca.desrt.dconf",
+                "/ca/desrt/dconf/Writer/user",
+                "ca.desrt.dconf.Writer",
+                self.session_bus,
+            )
+
+        except Exception:  # noqa: BLE001
+            self.session_bus = None
+            self.portal_interface = None
+            self.gnome_interface = None
+
+    def detect_freedesktop_portal_color_scheme(self) -> bool | None:
+        """
+        Detect color scheme using org.freedesktop.portal.Settings interface.
+
+        Returns
+        -------
+            True for dark theme, False for light theme, None if unavailable
+        """
+        try:
+            if not self.portal_interface or not self.portal_interface.isValid():
+                return None
+            # Call the Read method to get color-scheme setting
+            reply = self.portal_interface.call(
+                "Read", "org.freedesktop.appearance", "color-scheme"
+            )
+
+            if reply.type() == QDBusMessage.MessageType.ErrorMessage:
+                return None
+
+            # The reply should contain a variant with the color scheme value
+            # 0 = no preference, 1 = prefer dark, 2 = prefer light
+            value = reply.arguments()[0] if reply.arguments() else None
+
+            if value == 1:
+                return True
+            if value == 2:
+                return False
+
+        except (RuntimeError, AttributeError, TypeError):
+            return None
+        else:
+            return None
+
+    def detect_gnome_color_scheme_dbus(self) -> bool | None:
+        """
+        Detect GNOME color scheme using D-Bus dconf interface.
+
+        Returns
+        -------
+            True for dark theme, False for light theme, None if unavailable
+        """
+        try:
+            if not self.gnome_interface or not self.gnome_interface.isValid():
+                return None
+            # Get the color-scheme property from org.gnome.desktop.interface using dconf
+            reply = self.gnome_interface.call(
+                "Read", "/org/gnome/desktop/interface/color-scheme"
+            )
+
+            if reply.type() != QDBusMessage.MessageType.ErrorMessage:
+                value = reply.arguments()[0] if reply.arguments() else None
+                if value and isinstance(value, str) and "dark" in value.lower():
+                    return True
+                if value:
+                    return False
+
+        except (RuntimeError, AttributeError, TypeError):
+            pass
+
+        # Try gtk-theme as fallback
+        try:
+            reply = self.gnome_interface.call(
+                "Read", "/org/gnome/desktop/interface/gtk-theme"
+            )
+
+            if reply.type() != QDBusMessage.MessageType.ErrorMessage:
+                value = reply.arguments()[0] if reply.arguments() else None
+                if value and isinstance(value, str) and "dark" in value.lower():
+                    return True
+
+        except (RuntimeError, AttributeError, TypeError):
+            pass
+
+        return None
+
+
+# Global D-Bus detector instance
+_dbus_detector = None
+
+
+def get_dbus_detector() -> DBusThemeDetector:
+    """Get or create the global D-Bus theme detector instance."""
+    global _dbus_detector
+    if _dbus_detector is None:
+        _dbus_detector = DBusThemeDetector()
+    return _dbus_detector
+
+
+def detect_freedesktop_color_scheme_dbus() -> bool:
+    """Detect dark mode using D-Bus freedesktop.org portal interface."""
+    try:
+        detector = get_dbus_detector()
+        result = detector.detect_freedesktop_portal_color_scheme()
+    except (RuntimeError, AttributeError, TypeError):
+        return False
+    else:
+        return result is True
+
+
+def detect_gnome_color_scheme_dbus() -> bool:
+    """Detect GNOME color scheme using D-Bus interface."""
+    try:
+        detector = get_dbus_detector()
+        result = detector.detect_gnome_color_scheme_dbus()
+    except (RuntimeError, AttributeError, TypeError):
+        return False
+    else:
+        return result is True
 
 
 def gsettings_get(key: str) -> str | None:
@@ -51,6 +205,16 @@ def gsettings_get(key: str) -> str | None:
 
 def detect_gnome_color_scheme_dark() -> bool:
     """Detect if GNOME color-scheme is set to dark."""
+    # Try D-Bus first (secure method)
+    try:
+        detector = get_dbus_detector()
+        result = detector.detect_gnome_color_scheme_dbus()
+        if result is not None:
+            return result
+    except Exception:  # noqa: BLE001
+        log.debug("Unable to detect gnome color scheme with dbus.")
+
+    # Fallback to subprocess method (legacy support)
     value = gsettings_get("color-scheme")
     if value and "dark" in value.lower():
         log.debug("Detected GNOME color-scheme: dark")
@@ -127,7 +291,16 @@ def detect_lxqt_dark_theme() -> bool:
 
 def detect_freedesktop_color_scheme_dark() -> bool:
     """Detect dark mode using org.freedesktop.appearance.color-scheme (XDG portal, cross-desktop)."""
-    # Try org.freedesktop.appearance first
+    # Try D-Bus first (secure method)
+    try:
+        detector = get_dbus_detector()
+        result = detector.detect_freedesktop_portal_color_scheme()
+        if result is not None:
+            return result
+    except Exception:  # noqa: BLE001
+        log.debug("Unable to detect `freedesktop` color scheme with dbus.")
+
+    # Fallback to subprocess method (legacy support)
     try:
         result = subprocess.run(  # nosec B603 B607
             [
@@ -201,6 +374,10 @@ def detect_lxqt_dark_wrapper() -> bool:
 def get_linux_dark_mode_strategies() -> list:
     """Return the list of dark mode detection strategies in order of priority."""
     return [
+        # Pure D-Bus methods (will gracefully fail if D-Bus unavailable)
+        detect_freedesktop_color_scheme_dbus,
+        detect_gnome_color_scheme_dbus,
+        # Hybrid methods (D-Bus with subprocess fallback)
         detect_freedesktop_color_scheme_dark,
         detect_gnome_dark_wrapper,
         detect_kde_dark_wrapper,
