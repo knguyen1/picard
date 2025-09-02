@@ -395,10 +395,6 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         left_v = QtWidgets.QVBoxLayout(left_panel)
         left_v.setContentsMargins(0, 0, 0, 0)
         left_v.addWidget(self._list)
-        left_buttons = QtWidgets.QHBoxLayout()
-        left_buttons.addWidget(self._btn_duplicate)
-        left_buttons.addWidget(self._btn_delete)
-        left_v.addLayout(left_buttons)
 
         # Middle: editor
         self._editor_panel = QtWidgets.QWidget(self)
@@ -425,13 +421,10 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         form.addRow(_("Width"), self._width)
         form.addRow(_("Align"), self._align)
         form.addRow(_("Add to views"), self._view_selector)
-        # Add button at bottom of middle pane
-        self._btn_add = QtWidgets.QPushButton(_("Add"), self._editor_panel)
+
+        # Create Add button (will be positioned in horizontal layout later)
+        self._btn_add = QtWidgets.QPushButton(_("Add"), self)
         self._btn_add.clicked.connect(self._on_add)
-        add_row = QtWidgets.QHBoxLayout()
-        add_row.addStretch(1)
-        add_row.addWidget(self._btn_add)
-        form.addRow(add_row)
 
         # Right: docs
         self._docs = ScriptingDocumentationWidget(include_link=True, parent=self)
@@ -446,7 +439,25 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         self._splitter.setStretchFactor(1, 2)
         self._splitter.setStretchFactor(2, 2)
 
-        # Buttons (OK/Cancel only in dialog button box)
+        # Create horizontal button layout with three sections that match splitter proportions
+        button_layout = QtWidgets.QHBoxLayout()
+
+        # Left section: Duplicate/Delete buttons (stretch factor 1 to match left pane)
+        left_buttons_widget = QtWidgets.QWidget()
+        left_buttons = QtWidgets.QHBoxLayout(left_buttons_widget)
+        left_buttons.setContentsMargins(0, 0, 0, 0)
+        left_buttons.addWidget(self._btn_duplicate)
+        left_buttons.addWidget(self._btn_delete)
+        left_buttons.addStretch(1)  # Push buttons to the left
+
+        # Middle section: Add button (stretch factor 2 to match middle pane)
+        middle_buttons_widget = QtWidgets.QWidget()
+        middle_buttons = QtWidgets.QHBoxLayout(middle_buttons_widget)
+        middle_buttons.setContentsMargins(0, 0, 0, 0)
+        middle_buttons.addStretch(1)  # Push Add button to the right
+        middle_buttons.addWidget(self._btn_add)
+
+        # Right section: Make It So!/Cancel buttons (stretch factor 2 to match right pane)
         self._buttonbox = QtWidgets.QDialogButtonBox(self)
         ok = StandardButton(StandardButton.OK)
         ok.setText(_("Make It So!"))
@@ -459,9 +470,22 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         self._buttonbox.accepted.connect(self.accept)
         self._buttonbox.rejected.connect(self.reject)
 
+        # Add all sections to the horizontal layout with matching stretch factors
+        button_layout.addWidget(left_buttons_widget, 1)  # Stretch factor 1 (matches left pane)
+        button_layout.addWidget(middle_buttons_widget, 2)  # Stretch factor 2 (matches middle pane)
+        button_layout.addWidget(self._buttonbox, 2)  # Stretch factor 2 (matches right pane)
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self._splitter)
-        layout.addWidget(self._buttonbox)
+        layout.addLayout(button_layout)
+
+        # Store references for syncing
+        self._button_layout = button_layout
+        self._left_buttons_widget = left_buttons_widget
+        self._middle_buttons_widget = middle_buttons_widget
+
+        # Connect splitter resize to button layout sync
+        self._splitter.splitterMoved.connect(self._sync_button_layout)
 
         self.resize(DialogConfig.DIALOG_WIDTH, DialogConfig.DIALOG_HEIGHT)
         self._dirty = False
@@ -486,6 +510,9 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         else:
             # Enable inputs with sensible defaults, so users can type then click Add
             self._prepare_editor_for_new_entry()
+
+        # Sync button layout with splitter on initial render
+        QtCore.QTimer.singleShot(0, self._sync_button_layout)
 
     # --- Actions
     def accept(self) -> None:
@@ -835,3 +862,17 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
             yield
         finally:
             self._populating = old
+
+    def _sync_button_layout(self) -> None:
+        """Sync button layout proportions with splitter sizes."""
+        sizes = self._splitter.sizes()
+        if len(sizes) == 3 and sum(sizes) > 0:
+            # Calculate proportional widths based on splitter sizes
+            left_stretch = max(1, sizes[0])
+            middle_stretch = max(1, sizes[1])
+            right_stretch = max(1, sizes[2])
+
+            # Update the stretch factors to match splitter proportions
+            self._button_layout.setStretchFactor(self._left_buttons_widget, left_stretch)
+            self._button_layout.setStretchFactor(self._middle_buttons_widget, middle_stretch)
+            self._button_layout.setStretchFactor(self._buttonbox, right_stretch)
