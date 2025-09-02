@@ -32,7 +32,10 @@ columns. Internally, storage still supports multiple kinds.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import (
+    dataclass,
+    replace,
+)
 import itertools
 
 from PyQt6 import (
@@ -43,7 +46,10 @@ from PyQt6 import (
 from picard import log
 from picard.config import get_config
 from picard.i18n import gettext as _
-from picard.script.parser import ScriptError, ScriptParser
+from picard.script.parser import (
+    ScriptError,
+    ScriptParser,
+)
 
 from picard.ui.itemviews.custom_columns.shared import (
     DEFAULT_ADD_TO,
