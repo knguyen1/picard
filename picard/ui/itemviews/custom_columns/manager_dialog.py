@@ -31,9 +31,12 @@ columns. Internally, storage still supports multiple kinds.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass, replace
 import itertools
+from contextlib import contextmanager
+from dataclasses import (
+    dataclass,
+    replace,
+)
 
 from PyQt6 import (
     QtCore,
@@ -43,8 +46,11 @@ from PyQt6 import (
 from picard import log
 from picard.config import get_config
 from picard.i18n import gettext as _
-from picard.script.parser import ScriptError, ScriptParser
-
+from picard.script.parser import (
+    ScriptError,
+    ScriptParser,
+)
+from picard.ui import PicardDialog
 from picard.ui.itemviews.custom_columns.shared import (
     DEFAULT_ADD_TO,
     format_add_to,
@@ -366,8 +372,10 @@ class _SpecListModel(QtCore.QAbstractListModel):
         return -1
 
 
-class CustomColumnsManagerDialog(QtWidgets.QDialog):
+class CustomColumnsManagerDialog(PicardDialog):
     """Single-window UI to manage custom columns."""
+
+    STYLESHEET_ERROR = "QWidget { background-color: #f55; color: white; font-weight:bold; padding: 2px; }"
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize the custom columns manager dialog.
@@ -380,44 +388,41 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         super().__init__(parent=parent)
         self.setWindowTitle(_("Manage Custom Columns"))
 
-        # Left: list + controls (Duplicate/Delete)
+        # Left: list
         self._list = QtWidgets.QListView(self)
         self._list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
 
         self._model = _SpecListModel(load_specs_from_config(), parent=self)
         self._list.setModel(self._model)
-        self._btn_duplicate = QtWidgets.QPushButton(_("Duplicate"), self)
-        self._btn_delete = QtWidgets.QPushButton(_("Delete"), self)
-        self._btn_duplicate.clicked.connect(self._on_duplicate)
-        self._btn_delete.clicked.connect(self._on_delete)
         left_panel = QtWidgets.QWidget(self)
         left_v = QtWidgets.QVBoxLayout(left_panel)
         left_v.setContentsMargins(0, 0, 0, 0)
         left_v.addWidget(self._list)
-        left_buttons = QtWidgets.QHBoxLayout()
-        left_buttons.addWidget(self._btn_duplicate)
-        left_buttons.addWidget(self._btn_delete)
-        left_v.addLayout(left_buttons)
 
         # Middle: editor
         self._editor_panel = QtWidgets.QWidget(self)
-        form = QtWidgets.QFormLayout(self._editor_panel)
+        middle_v = QtWidgets.QVBoxLayout(self._editor_panel)
+        form = QtWidgets.QFormLayout()
 
-        self._title = QtWidgets.QLineEdit(self._editor_panel)
-        self._key = QtWidgets.QLineEdit(self._editor_panel)
+        self._title = QtWidgets.QLineEdit()
+        self._key = QtWidgets.QLineEdit()
         self._key.setPlaceholderText(_("Auto-derived from Column Title"))
-        self._expression = ScriptTextEdit(self._editor_panel)
+        self._expression = ScriptTextEdit(self)
         self._expression.setPlaceholderText("%artist% - %title%")
-        self._width = QtWidgets.QSpinBox(self._editor_panel)
+        self._width = QtWidgets.QSpinBox()
         self._width.setRange(DialogConfig.MIN_WIDTH, DialogConfig.MAX_WIDTH)
         self._width.setSpecialValueText("")
         self._width.setValue(DialogConfig.DEFAULT_WIDTH)
-        self._align = QtWidgets.QComboBox(self._editor_panel)
+        self._width.setMaximumWidth(100)
+        self._width.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self._width.setSuffix(_(' px'))
+        self._align = QtWidgets.QComboBox()
         for label, enum_val in get_align_options():
             self._align.addItem(label, enum_val)
+        self._align.setMaximumWidth(100)
 
-        self._view_selector = ViewSelector(self._editor_panel)
+        self._view_selector = ViewSelector()
 
         form.addRow(_("Column Title") + "*", self._title)
         form.addRow(_("Key"), self._key)
@@ -425,19 +430,20 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         form.addRow(_("Width"), self._width)
         form.addRow(_("Align"), self._align)
         form.addRow(_("Add to views"), self._view_selector)
-        # Add button at bottom of middle pane
-        self._btn_add = QtWidgets.QPushButton(_("Add"), self._editor_panel)
-        self._btn_add.clicked.connect(self._on_add)
-        add_row = QtWidgets.QHBoxLayout()
-        add_row.addStretch(1)
-        add_row.addWidget(self._btn_add)
-        form.addRow(add_row)
+
+        self.error_message = QtWidgets.QLabel()
+        self.error_message.setStyleSheet("")
+        self.error_message.setText("")
+
+        middle_v.addLayout(form)
+        middle_v.addWidget(self.error_message)
 
         # Right: docs
         self._docs = ScriptingDocumentationWidget(include_link=True, parent=self)
 
         # Splitter
         self._splitter = QtWidgets.QSplitter(self)
+        self._splitter.setObjectName('column_manager_splitter')
         self._splitter.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self._splitter.addWidget(left_panel)
         self._splitter.addWidget(self._editor_panel)
@@ -445,6 +451,22 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         self._splitter.setStretchFactor(0, 1)
         self._splitter.setStretchFactor(1, 2)
         self._splitter.setStretchFactor(2, 2)
+
+        # List editing buttons (Add, Duplicate, Delete)
+        self._btn_add = QtWidgets.QPushButton(_("Add"), self)
+        self._btn_duplicate = QtWidgets.QPushButton(_("Duplicate"), self)
+        self._btn_delete = QtWidgets.QPushButton(_("Delete"), self)
+        self._btn_add.clicked.connect(self._on_add)
+        self._btn_duplicate.clicked.connect(self._on_duplicate)
+        self._btn_delete.clicked.connect(self._on_delete)
+        self._spacer = QtWidgets.QSpacerItem(
+            1, 1, hPolicy=QtWidgets.QSizePolicy.Policy.Expanding, vPolicy=QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        left_buttons = QtWidgets.QHBoxLayout()
+        left_buttons.addWidget(self._btn_add)
+        left_buttons.addWidget(self._btn_duplicate)
+        left_buttons.addWidget(self._btn_delete)
+        left_buttons.addSpacerItem(self._spacer)
 
         # Buttons (OK/Cancel only in dialog button box)
         self._buttonbox = QtWidgets.QDialogButtonBox(self)
@@ -454,13 +476,16 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         self._buttonbox.addButton(
             StandardButton(StandardButton.CANCEL), QtWidgets.QDialogButtonBox.ButtonRole.RejectRole
         )
+        self._buttonbox.addButton(StandardButton(StandardButton.HELP), QtWidgets.QDialogButtonBox.ButtonRole.HelpRole)
         self._btn_apply = ok
 
         self._buttonbox.accepted.connect(self.accept)
         self._buttonbox.rejected.connect(self.reject)
+        self._buttonbox.helpRequested.connect(self.help)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self._splitter)
+        layout.addLayout(left_buttons)
         layout.addWidget(self._buttonbox)
 
         self.resize(DialogConfig.DIALOG_WIDTH, DialogConfig.DIALOG_HEIGHT)
@@ -475,7 +500,7 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         sel.selectionChanged.connect(self._on_selection_changed)
         self._title.textChanged.connect(self._on_form_changed)
         self._key.textChanged.connect(self._on_form_changed)
-        self._expression.textChanged.connect(self._on_form_changed)
+        self._expression.textChanged.connect(self._on_expression_changed)
         self._width.valueChanged.connect(self._on_form_changed)
         self._align.currentIndexChanged.connect(self._on_form_changed)
         self._view_selector.changed.connect(self._on_form_changed)
@@ -498,6 +523,10 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
         """Close the dialog discarding unsaved changes."""
         self._dirty = False
         super().reject()
+
+    def help(self) -> None:
+        """Open the online help page."""
+        self.show_help('/usage/custom_columns.html')
 
     # List / form coordination
     def _selected_row(self) -> int:
@@ -560,6 +589,10 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
                 self._align.setCurrentIndex(idx)
             views = parse_add_to(getattr(spec, 'add_to', DEFAULT_ADD_TO))
             self._view_selector.set_selected(set(views))
+
+    def _on_expression_changed(self, *args) -> None:  # type: ignore[no-untyped-def]
+        self.live_update_and_check()
+        self._on_form_changed(args)
 
     def _on_form_changed(self, *args) -> None:  # type: ignore[no-untyped-def]
         """Mark dialog as dirty and update derived key placeholder."""
@@ -835,3 +868,14 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
             yield
         finally:
             self._populating = old
+
+    def live_update_and_check(self):
+        self.error_message.setStyleSheet("")
+        self.error_message.setText("")
+        try:
+            parser = ScriptParser()
+            parser.eval(self._expression.toPlainText().strip())
+        except ScriptError as e:
+            self.error_message.setStyleSheet(self.STYLESHEET_ERROR)
+            self.error_message.setText(str(e))
+            return
