@@ -414,19 +414,19 @@ class CustomColumnsManagerDialog(PicardDialog):
         middle_v = QtWidgets.QVBoxLayout(self._editor_panel)
         form = QtWidgets.QFormLayout()
 
-        self._title = QtWidgets.QLineEdit()
-        self._key = QtWidgets.QLineEdit()
+        self._title = QtWidgets.QLineEdit(self._editor_panel)
+        self._key = QtWidgets.QLineEdit(self._editor_panel)
         self._key.setPlaceholderText(_("Auto-derived from Column Title"))
         self._expression = ScriptTextEdit(self)
         self._expression.setPlaceholderText("%artist% - %title%")
-        self._width = QtWidgets.QSpinBox()
+        self._width = QtWidgets.QSpinBox(self._editor_panel)
         self._width.setRange(DialogConfig.MIN_WIDTH, DialogConfig.MAX_WIDTH)
         self._width.setSpecialValueText("")
         self._width.setValue(DialogConfig.DEFAULT_WIDTH)
         self._width.setMaximumWidth(100)
         self._width.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         self._width.setSuffix(_(' px'))
-        self._align = QtWidgets.QComboBox()
+        self._align = QtWidgets.QComboBox(self._editor_panel)
         for label, enum_val in get_align_options():
             self._align.addItem(label, enum_val)
         self._align.setMaximumWidth(100)
@@ -440,6 +440,15 @@ class CustomColumnsManagerDialog(PicardDialog):
         form.addRow(_("Align"), self._align)
         form.addRow(_("Add to views"), self._view_selector)
 
+        middle_v.addLayout(form)
+
+        # Add label for error message
+        self.error_message = QtWidgets.QLabel()
+        self.error_message.setStyleSheet("")
+        self.error_message.setText("")
+
+        middle_v.addWidget(self.error_message)
+
         # Add button at bottom of middle pane
         self._btn_add = QtWidgets.QPushButton(_("Add"), self._editor_panel)
         self._btn_add.clicked.connect(self._on_add)
@@ -447,12 +456,6 @@ class CustomColumnsManagerDialog(PicardDialog):
         add_row.addStretch(1)
         add_row.addWidget(self._btn_add)
 
-        self.error_message = QtWidgets.QLabel()
-        self.error_message.setStyleSheet("")
-        self.error_message.setText("")
-
-        middle_v.addLayout(form)
-        middle_v.addWidget(self.error_message)
         middle_v.addLayout(add_row)
 
         # Right: docs
