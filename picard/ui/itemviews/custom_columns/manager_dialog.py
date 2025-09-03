@@ -419,9 +419,13 @@ class CustomColumnsManagerDialog(PicardDialog):
         self._width.setRange(DialogConfig.MIN_WIDTH, DialogConfig.MAX_WIDTH)
         self._width.setSpecialValueText("")
         self._width.setValue(DialogConfig.DEFAULT_WIDTH)
+        self._width.setMaximumWidth(100)
+        self._width.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self._width.setSuffix(_(' px'))
         self._align = QtWidgets.QComboBox(self._editor_panel)
         for label, enum_val in get_align_options():
             self._align.addItem(label, enum_val)
+        self._align.setMaximumWidth(100)
 
         self._view_selector = ViewSelector(self._editor_panel)
 
