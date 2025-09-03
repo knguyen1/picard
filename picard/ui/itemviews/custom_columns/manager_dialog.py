@@ -461,10 +461,12 @@ class CustomColumnsManagerDialog(PicardDialog):
         self._buttonbox.addButton(
             StandardButton(StandardButton.CANCEL), QtWidgets.QDialogButtonBox.ButtonRole.RejectRole
         )
+        self._buttonbox.addButton(StandardButton(StandardButton.HELP), QtWidgets.QDialogButtonBox.ButtonRole.HelpRole)
         self._btn_apply = ok
 
         self._buttonbox.accepted.connect(self.accept)
         self._buttonbox.rejected.connect(self.reject)
+        self._buttonbox.helpRequested.connect(self.help)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self._splitter)
@@ -505,6 +507,10 @@ class CustomColumnsManagerDialog(PicardDialog):
         """Close the dialog discarding unsaved changes."""
         self._dirty = False
         super().reject()
+
+    def help(self) -> None:
+        """Open the online help page."""
+        self.show_help('/usage/custom_columns.html')
 
     # List / form coordination
     def _selected_row(self) -> int:
