@@ -31,12 +31,12 @@ columns. Internally, storage still supports multiple kinds.
 
 from __future__ import annotations
 
+import itertools
 from contextlib import contextmanager
 from dataclasses import (
     dataclass,
     replace,
 )
-import itertools
 
 from PyQt6 import (
     QtCore,
@@ -50,7 +50,7 @@ from picard.script.parser import (
     ScriptError,
     ScriptParser,
 )
-
+from picard.ui import PicardDialog
 from picard.ui.itemviews.custom_columns.shared import (
     DEFAULT_ADD_TO,
     format_add_to,
@@ -372,7 +372,7 @@ class _SpecListModel(QtCore.QAbstractListModel):
         return -1
 
 
-class CustomColumnsManagerDialog(QtWidgets.QDialog):
+class CustomColumnsManagerDialog(PicardDialog):
     """Single-window UI to manage custom columns."""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
@@ -444,6 +444,7 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
 
         # Splitter
         self._splitter = QtWidgets.QSplitter(self)
+        self._splitter.setObjectName('column_manager_splitter')
         self._splitter.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self._splitter.addWidget(left_panel)
         self._splitter.addWidget(self._editor_panel)
@@ -841,3 +842,6 @@ class CustomColumnsManagerDialog(QtWidgets.QDialog):
             yield
         finally:
             self._populating = old
+
+    def closeEvent(self, event):
+        super().closeEvent(event)
