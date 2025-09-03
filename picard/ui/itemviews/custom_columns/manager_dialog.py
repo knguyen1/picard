@@ -31,12 +31,12 @@ columns. Internally, storage still supports multiple kinds.
 
 from __future__ import annotations
 
-import itertools
 from contextlib import contextmanager
 from dataclasses import (
     dataclass,
     replace,
 )
+import itertools
 
 from PyQt6 import (
     QtCore,
@@ -50,6 +50,7 @@ from picard.script.parser import (
     ScriptError,
     ScriptParser,
 )
+
 from picard.ui import PicardDialog
 from picard.ui.itemviews.custom_columns.shared import (
     DEFAULT_ADD_TO,
@@ -375,6 +376,8 @@ class _SpecListModel(QtCore.QAbstractListModel):
 class CustomColumnsManagerDialog(PicardDialog):
     """Single-window UI to manage custom columns."""
 
+    STYLESHEET_ERROR = "QWidget { background-color: #f55; color: white; font-weight:bold; }"
+
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize the custom columns manager dialog.
 
@@ -408,26 +411,27 @@ class CustomColumnsManagerDialog(PicardDialog):
 
         # Middle: editor
         self._editor_panel = QtWidgets.QWidget(self)
-        form = QtWidgets.QFormLayout(self._editor_panel)
+        middle_v = QtWidgets.QVBoxLayout(self._editor_panel)
+        form = QtWidgets.QFormLayout()
 
-        self._title = QtWidgets.QLineEdit(self._editor_panel)
-        self._key = QtWidgets.QLineEdit(self._editor_panel)
+        self._title = QtWidgets.QLineEdit()
+        self._key = QtWidgets.QLineEdit()
         self._key.setPlaceholderText(_("Auto-derived from Column Title"))
-        self._expression = ScriptTextEdit(self._editor_panel)
+        self._expression = ScriptTextEdit(self)
         self._expression.setPlaceholderText("%artist% - %title%")
-        self._width = QtWidgets.QSpinBox(self._editor_panel)
+        self._width = QtWidgets.QSpinBox()
         self._width.setRange(DialogConfig.MIN_WIDTH, DialogConfig.MAX_WIDTH)
         self._width.setSpecialValueText("")
         self._width.setValue(DialogConfig.DEFAULT_WIDTH)
         self._width.setMaximumWidth(100)
         self._width.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         self._width.setSuffix(_(' px'))
-        self._align = QtWidgets.QComboBox(self._editor_panel)
+        self._align = QtWidgets.QComboBox()
         for label, enum_val in get_align_options():
             self._align.addItem(label, enum_val)
         self._align.setMaximumWidth(100)
 
-        self._view_selector = ViewSelector(self._editor_panel)
+        self._view_selector = ViewSelector()
 
         form.addRow(_("Column Title") + "*", self._title)
         form.addRow(_("Key"), self._key)
@@ -435,13 +439,21 @@ class CustomColumnsManagerDialog(PicardDialog):
         form.addRow(_("Width"), self._width)
         form.addRow(_("Align"), self._align)
         form.addRow(_("Add to views"), self._view_selector)
+
         # Add button at bottom of middle pane
         self._btn_add = QtWidgets.QPushButton(_("Add"), self._editor_panel)
         self._btn_add.clicked.connect(self._on_add)
         add_row = QtWidgets.QHBoxLayout()
         add_row.addStretch(1)
         add_row.addWidget(self._btn_add)
-        form.addRow(add_row)
+
+        self.error_message = QtWidgets.QLabel()
+        self.error_message.setStyleSheet("")
+        self.error_message.setText("")
+
+        middle_v.addLayout(form)
+        middle_v.addWidget(self.error_message)
+        middle_v.addLayout(add_row)
 
         # Right: docs
         self._docs = ScriptingDocumentationWidget(include_link=True, parent=self)
@@ -488,7 +500,7 @@ class CustomColumnsManagerDialog(PicardDialog):
         sel.selectionChanged.connect(self._on_selection_changed)
         self._title.textChanged.connect(self._on_form_changed)
         self._key.textChanged.connect(self._on_form_changed)
-        self._expression.textChanged.connect(self._on_form_changed)
+        self._expression.textChanged.connect(self._on_expression_changed)
         self._width.valueChanged.connect(self._on_form_changed)
         self._align.currentIndexChanged.connect(self._on_form_changed)
         self._view_selector.changed.connect(self._on_form_changed)
@@ -527,6 +539,10 @@ class CustomColumnsManagerDialog(PicardDialog):
         """
         indexes = self._list.selectionModel().selectedIndexes()
         return indexes[0].row() if indexes else -1
+
+    def _on_expression_changed(self, *args) -> None:  # type: ignore[no-untyped-def]
+        self.live_update_and_check()
+        self._on_form_changed(args)
 
     def _on_selection_changed(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection) -> None:
         """Handle selection change in the list and populate the editor.
@@ -852,6 +868,17 @@ class CustomColumnsManagerDialog(PicardDialog):
             yield
         finally:
             self._populating = old
+
+    def live_update_and_check(self):
+        self.error_message.setStyleSheet("")
+        self.error_message.setText("")
+        try:
+            parser = ScriptParser()
+            parser.eval(self._expression.toPlainText().strip())
+        except ScriptError as e:
+            self.error_message.setStyleSheet(self.STYLESHEET_ERROR)
+            self.error_message.setText(str(e))
+            return
 
     def closeEvent(self, event):
         super().closeEvent(event)
