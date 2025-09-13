@@ -85,7 +85,6 @@ ext-modules = [
 [tool.setuptools.dynamic]
 version = {attr = "picard.PICARD_VERSION_STR_SHORT"}
 readme = {file = ["README.md"], content-type = "text/markdown"}
-dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.packages.find]
 include = ["picard*"]
@@ -124,7 +123,6 @@ exclude = [
     "venv",
     "picard/ui/forms/ui_*.py",
     "picard/resources.py",
-    "tagger.py",
     "picard/const/attributes.py",
     "picard/const/countries.py",
     "picard/ui/ui_.*\\.py",
@@ -134,7 +132,7 @@ exclude = [
 line-length = 120
 indent-width = 4
 
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.

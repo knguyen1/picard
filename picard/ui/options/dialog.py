@@ -14,7 +14,7 @@
 # Copyright (C) 2017 Suhas
 # Copyright (C) 2018 Vishal Choudhary
 # Copyright (C) 2021 Gabriel Ferreira
-# Copyright (C) 2021-2023 Bob Swift
+# Copyright (C) 2021-2023, 2025 Bob Swift
 # Copyright (C) 2024 Giorgio Fontanive
 #
 # This program is free software; you can redistribute it and/or
@@ -78,6 +78,7 @@ from picard.ui.options import (  # noqa: F401 # pylint: disable=unused-import
     interface,
     interface_colors,
     interface_cover_art_box,
+    interface_quick_menu,
     interface_toolbar,
     interface_top_tags,
     maintenance,
@@ -96,7 +97,6 @@ from picard.ui.options import (  # noqa: F401 # pylint: disable=unused-import
     tags_compatibility_id3,
     tags_compatibility_wave,
 )
-from picard.ui.util import StandardButton
 
 
 class ErrorOptionsPage(OptionsPage):
@@ -178,18 +178,24 @@ class OptionsDialog(PicardDialog, SingletonDialog):
         self.ui = Ui_OptionsDialog()
         self.ui.setupUi(self)
 
+        self.ui.profile_warning_icon.setPixmap(
+            self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MessageBoxWarning).pixmap(20, 20)
+        )
+        self.ui.profile_help_button.setIcon(
+            self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MessageBoxQuestion)
+        )
+        self.ui.profile_help_button.setToolTip(_("Display help regarding option profiles"))
+        self.ui.profile_help_button.clicked.connect(self._show_profile_help)
+
         self.ui.reset_all_button = QtWidgets.QPushButton(_("&Restore all Defaults"))
         self.ui.reset_all_button.setToolTip(_("Reset all of Picard's settings"))
         self.ui.reset_button = QtWidgets.QPushButton(_("Restore &Defaults"))
         self.ui.reset_button.setToolTip(_("Reset all settings for current option page"))
 
-        ok = StandardButton(StandardButton.OK)
-        ok.setText(_("Make It So!"))
+        ok = QtWidgets.QPushButton(_("Make It So!"))
         self.ui.buttonbox.addButton(ok, QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
-        self.ui.buttonbox.addButton(
-            StandardButton(StandardButton.CANCEL), QtWidgets.QDialogButtonBox.ButtonRole.RejectRole
-        )
-        self.ui.buttonbox.addButton(StandardButton(StandardButton.HELP), QtWidgets.QDialogButtonBox.ButtonRole.HelpRole)
+        self.ui.buttonbox.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        self.ui.buttonbox.addButton(QtWidgets.QDialogButtonBox.StandardButton.Help)
         self.ui.buttonbox.addButton(self.ui.reset_all_button, QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
         self.ui.buttonbox.addButton(self.ui.reset_button, QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
 
@@ -284,6 +290,9 @@ class OptionsDialog(PicardDialog, SingletonDialog):
                 _("Profiles Attached to Options"),
                 _("The options on this page are not currently available to be managed using profiles."),
             )
+
+    def _show_profile_help(self):
+        self.show_help('/usage/option_profiles.html')
 
     def display_simple_message_box(self, window_title, message):
         message_box = QtWidgets.QMessageBox(self)
@@ -399,6 +408,36 @@ class OptionsDialog(PicardDialog, SingletonDialog):
             self.ui.attached_profiles_button.setDisabled(False)
         else:
             self.ui.attached_profiles_button.setDisabled(True)
+        self.update_profile_save_warning(page)
+
+    def update_profile_save_warning(self, page):
+        working_profiles, working_settings = self.get_working_profile_data()
+        profile_set = set()
+
+        option_group = profile_groups_group_from_page(page)
+        if option_group:
+            for opt in option_group['settings']:
+                for idx, item in enumerate(working_profiles):
+                    if not item['enabled']:
+                        continue
+                    profile_id = item['id']
+                    if profile_id not in working_settings:
+                        continue
+                    profile_settings = working_settings[profile_id]
+                    if opt.name in profile_settings:
+                        profile_set.add((idx, item['title']))
+                        break
+
+        if not profile_set:
+            self.ui.profile_warning.setVisible(False)
+            return
+
+        if len(profile_set) == 1:
+            text = _('profile "%s"') % profile_set.pop()[1]
+        else:
+            text = _('profiles %s') % ', '.join([f'"{p[1]}"' for p in sorted(profile_set)])
+        self.ui.profile_warning_text.setText(_('The highlighted settings will be applied to %s') % text)
+        self.ui.profile_warning.setVisible(True)
 
     def switch_page(self):
         items = self.ui.pages_tree.selectedItems()
@@ -438,14 +477,19 @@ class OptionsDialog(PicardDialog, SingletonDialog):
                 self._show_page_error(page, e)
                 return
 
-        for page in self.loaded_pages:
+        # Force the `profiles` page to always save first to avoid an error when
+        # saving settings to a new profile that has been marked as enabled.
+        pages = [
+            self.get_page('profiles'),
+        ]
+        pages.extend(x for x in sorted(self.loaded_pages, key=lambda p: (p.SORT_ORDER, p.NAME)) if x.NAME != 'profiles')
+        for page in pages:
             try:
                 page.save()
             except Exception as e:
                 log.exception("Failed saving options page %r", page)
                 self._show_page_error(page, e)
                 return
-
         super().accept()
 
     def _show_page_error(self, page, error):
@@ -525,9 +569,7 @@ class AttachedProfilesDialog(PicardDialog):
         self.option_group = option_group
         self.ui = Ui_AttachedProfilesDialog()
         self.ui.setupUi(self)
-        self.ui.buttonBox.addButton(
-            StandardButton(StandardButton.CLOSE), QtWidgets.QDialogButtonBox.ButtonRole.RejectRole
-        )
+        self.ui.buttonBox.addButton(QtWidgets.QDialogButtonBox.StandardButton.Close)
         self.ui.buttonBox.rejected.connect(self.close_window)
 
         config = get_config()

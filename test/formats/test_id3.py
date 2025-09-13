@@ -27,6 +27,7 @@
 
 
 import os.path
+from unittest.mock import patch
 
 import mutagen
 
@@ -753,6 +754,11 @@ class Mp3CoverArtTest(CommonCoverArtTests.CoverArtTestCase):
 class ID3FileTest(PicardTestCase):
     def setUp(self):
         super().setUp()
+        # Ensure setting exists and mock get_config to return our test config
+        config.setting['disable_date_sanitization_formats'] = []
+        self._get_config_patcher = patch('picard.config.get_config', return_value=config.config)
+        self._get_config_patcher.start()
+        self.addCleanup(self._get_config_patcher.stop)
         self.file = id3.ID3File('somepath/somefile.mp3')
         config.setting['write_id3v23'] = False
         config.setting['id3v23_join_with'] = ' / '
@@ -801,7 +807,7 @@ class ID3FileTest(PicardTestCase):
             "[00:00.000]<00:00.000>Test empty lyrics at the end\n[00:01.000]<00:01.000>",
             "[00:00.000]<00:00.000>Test timestamp estimation<00:01.000>in the\n[00:01.352]last phrase",
         )
-        for sylt, correct_lrc in zip(sylts, correct_lrcs):
+        for sylt, correct_lrc in zip(sylts, correct_lrcs, strict=True):
             lrc = self.file._parse_sylt_text(sylt, 2)
             self.assertEqual(lrc, correct_lrc)
 
@@ -830,6 +836,6 @@ class ID3FileTest(PicardTestCase):
             [("input\nTest invalid", 0), ("input", 1000)],
             [],
         )
-        for lrc, correct_sylt in zip(lrcs, correct_sylts):
+        for lrc, correct_sylt in zip(lrcs, correct_sylts, strict=True):
             sylt = self.file._parse_lrc_text(lrc)
             self.assertEqual(sylt, correct_sylt)

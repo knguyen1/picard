@@ -58,6 +58,7 @@ from picard.const.defaults import (
     DEFAULT_MUSIC_DIR,
     DEFAULT_PROGRAM_UPDATE_LEVEL,
     DEFAULT_QUERY_LIMIT,
+    DEFAULT_QUICK_MENU_ITEMS,
     DEFAULT_RELEASE_TYPE_SCORES,
     DEFAULT_REPLACEMENT,
     DEFAULT_SHOW_MENU_ICONS,
@@ -317,6 +318,10 @@ Option(
     title=N_("Colors to use for dark theme"),
 )
 
+# picard/ui/options/interface_quick_menu.py
+# Quick Menu
+ListOption('setting', 'quick_menu_items', DEFAULT_QUICK_MENU_ITEMS, title=N_("Options to show in the Quick Menu"))
+
 # picard/ui/options/interface_toolbar.py
 # Action Toolbar
 
@@ -365,6 +370,12 @@ BoolOption('setting', 'track_ars', False, title=N_("Use track and release relati
 BoolOption('setting', 'translate_artist_names', False, title=N_("Translate artist names"))
 BoolOption('setting', 'translate_artist_names_script_exception', False, title=N_("Translate artist names exception"))
 TextOption('setting', 'va_name', "Various Artists", title=N_("Various Artists name"))
+ListOption(
+    'setting',
+    'disable_date_sanitization_formats',
+    [],
+    title=N_("Tag formats to not sanitize dates"),
+)
 
 # picard/ui/options/network.py
 # Network
