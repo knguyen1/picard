@@ -80,7 +80,7 @@ from picard.ui.itemviews.columns import (
     FILEVIEW_COLUMNS,
     IconColumn,
 )
-from picard.ui.itemviews.match_quality_column import MatchQualityColumn
+from picard.ui.itemviews.custom_columns import DelegateColumn
 
 
 def get_match_color(similarity, basecolor):
@@ -410,9 +410,10 @@ class TreeItem(QtWidgets.QTreeWidgetItem):
                 self.setBackground(i, bgcolor)
             if isinstance(column, IconColumn):
                 self.setSizeHint(i, column.size)
-            elif isinstance(column, MatchQualityColumn):
-                # Progress columns are handled by delegate, just set size hint
-                self.setSizeHint(i, column.size)
+            elif isinstance(column, DelegateColumn):
+                # Delegate columns are handled by delegate, just set size hint
+                if hasattr(column, 'size'):
+                    self.setSizeHint(i, column.size)
             else:
                 if column.align == ColumnAlign.RIGHT:
                     self.setTextAlignment(i, QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)

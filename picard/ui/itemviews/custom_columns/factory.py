@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PyQt6 import QtCore
+
 from picard.item import Item
 from picard.script import ScriptParser
 
@@ -31,9 +33,10 @@ from picard.ui.columns import (
     ColumnAlign,
     ColumnSortType,
 )
-from picard.ui.itemviews.custom_columns.column import CustomColumn
+from picard.ui.itemviews.custom_columns.column import CustomColumn, DelegateColumn
 from picard.ui.itemviews.custom_columns.protocols import (
     ColumnValueProvider,
+    DelegateColumnProvider,
     SortKeyProvider,
 )
 from picard.ui.itemviews.custom_columns.providers import (
@@ -280,4 +283,40 @@ def make_provider_column(
         align=align,
         always_visible=always_visible,
         sort_type=sort_type,
+    )
+
+
+def make_delegate_column(
+    title: str,
+    key: str,
+    provider: DelegateColumnProvider,
+    *,
+    width: int | None = None,
+    align: ColumnAlign = ColumnAlign.LEFT,
+    always_visible: bool = False,
+    sort_type: ColumnSortType | None = None,
+    size: QtCore.QSize | None = None,
+) -> DelegateColumn:
+    """Create column that uses a delegate for custom rendering.
+
+    Parameters
+    ----------
+    title, key, provider, width, align, always_visible, sort_type
+        Column configuration.
+
+    Returns
+    -------
+    DelegateColumn
+        The delegate column.
+    """
+    resolved_sort_type = sort_type or ColumnSortType.TEXT
+    return DelegateColumn(
+        title,
+        key,
+        provider,
+        width=width,
+        align=align,
+        sort_type=resolved_sort_type,
+        always_visible=always_visible,
+        size=size,
     )

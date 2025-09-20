@@ -45,8 +45,6 @@
 
 from PyQt6 import QtCore
 
-from picard.album import AlbumStatus
-from picard.const.sys import IS_LINUX
 from picard.i18n import N_
 from picard.util import icontheme
 
@@ -58,7 +56,7 @@ from picard.ui.columns import (
     DefaultColumn,
     ImageColumn,
 )
-from picard.ui.itemviews.match_quality_column import MatchQualityColumn
+from picard.ui.itemviews.custom_columns.standard_columns import create_match_quality_column
 
 
 def _sortkey_length(obj):
@@ -77,25 +75,6 @@ def _sortkey_bitrate(obj):
         return float(obj.metadata['~bitrate'] or obj.orig_metadata['~bitrate'] or 0)
     except (ValueError, TypeError):
         return 0
-
-
-def _sortkey_match_quality(obj):
-    """Sort key for match quality column - sort by completion percentage."""
-    if hasattr(obj, 'get_num_matched_tracks') and hasattr(obj, 'tracks'):
-        # Album object
-        # Check if album is still loading - if so, return 0 to avoid premature sorting
-        if hasattr(obj, 'status') and obj.status == AlbumStatus.LOADING:
-            return 0.0
-
-        total = len(obj.tracks) if obj.tracks else 0
-        if total > 0:
-            # Column sorting is reversed on Linux
-            multiplier = -1 if IS_LINUX else 1
-            matched = obj.get_num_matched_tracks()
-            return matched / total * multiplier
-        return 0.0
-    # For track objects, return 0 since we don't show icons at track level
-    return 0.0
 
 
 class IconColumn(ImageColumn):
@@ -135,10 +114,8 @@ _fingerprint_column = IconColumn(N_("Fingerprint status"), '~fingerprint')
 _fingerprint_column.header_icon_func = lambda: icontheme.lookup('fingerprint-gray', icontheme.ICON_SIZE_MENU)
 _fingerprint_column.set_header_icon_size(16, 16, 1)
 
-_match_quality_column = MatchQualityColumn(N_("Match"), '~match_quality', width=57)
-_match_quality_column.sortable = True
-_match_quality_column.sort_type = ColumnSortType.SORTKEY
-_match_quality_column.sortkey = _sortkey_match_quality
+
+_match_quality_column = create_match_quality_column()
 _match_quality_column.is_default = True
 
 

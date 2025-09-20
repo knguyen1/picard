@@ -22,6 +22,8 @@
 
 from __future__ import annotations
 
+from PyQt6 import QtCore
+
 from picard.ui.columns import (
     Column,
     ColumnAlign,
@@ -29,6 +31,7 @@ from picard.ui.columns import (
 )
 from picard.ui.itemviews.custom_columns.protocols import (
     ColumnValueProvider,
+    DelegateColumnProvider,
     SortKeyProvider,
 )
 
@@ -81,3 +84,64 @@ class CustomColumn(Column):
             status_icon=False,
         )
         self.provider = provider
+
+
+class DelegateColumn(Column):
+    """A column that uses a delegate for custom rendering and optional sorting."""
+
+    def __init__(
+        self,
+        title: str,
+        key: str,
+        provider: DelegateColumnProvider,
+        width: int | None = None,
+        align: ColumnAlign = ColumnAlign.LEFT,
+        sort_type: ColumnSortType = ColumnSortType.TEXT,
+        always_visible: bool = False,
+        size: QtCore.QSize | None = None,
+    ):
+        """Create delegate column.
+
+        Parameters
+        ----------
+        title
+            Display title of the column.
+        key
+            Internal key used to identify the column.
+        provider
+            Provide delegate class and data for rendering.
+        width
+            Optional fixed width in pixels.
+        align
+            Set text alignment.
+        sort_type
+            Set sorting behavior of the column.
+        always_visible
+            If True, hide the column visibility toggle.
+        size
+            Preferred delegate size.
+        """
+
+        sortkey_fn = None
+        if sort_type == ColumnSortType.SORTKEY and isinstance(provider, SortKeyProvider):
+            sortkey_fn = provider.sort_key  # type: ignore[assignment]
+
+        super().__init__(
+            title,
+            key,
+            width=width,
+            align=align,
+            sort_type=sort_type,
+            sortkey=sortkey_fn,
+            always_visible=always_visible,
+            status_icon=False,
+        )
+        self.delegate_provider = provider
+        self.size = size if size is not None else QtCore.QSize(16, 16)  # Default icon size
+
+    @property
+    def delegate_class(self):
+        """Get the delegate class for this column."""
+        if hasattr(self.delegate_provider, '_base'):
+            return self.delegate_provider._base.get_delegate_class()
+        return self.delegate_provider.get_delegate_class()

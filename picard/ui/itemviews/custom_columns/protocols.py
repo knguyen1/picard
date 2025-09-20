@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import (
     Protocol,
+    TypeAlias,
     runtime_checkable,
 )
 
@@ -64,3 +65,50 @@ class SortKeyProvider(Protocol):
             Sort key.
         """
         ...
+
+
+@runtime_checkable
+class DelegateProvider(Protocol):
+    """Protocol for columns that require custom rendering via delegates."""
+
+    def get_delegate_class(self) -> type:
+        """Return the delegate class for custom rendering.
+
+        Returns
+        -------
+        type
+            The delegate class (subclass of QStyledItemDelegate).
+        """
+        ...
+
+
+@runtime_checkable
+class DelegateAdapter(Protocol):
+    """Protocol for adapters that wrap a `DelegateProvider`.
+
+    An adapter implementing this protocol exposes the wrapped provider via
+    the `_base` attribute and forwards value evaluation and optional sort key
+    computation. This allows using adapters (e.g. sorting adapters) where a
+    delegate provider is expected, while still accessing the underlying
+    delegate for rendering.
+
+    Notes
+    -----
+    - The `_base` must provide `get_delegate_class()`.
+    - `evaluate` returns a textual value to support sorting / testing.
+    - `sort_key` is optional; if implemented it provides stable custom sort.
+    """
+
+    _base: DelegateProvider
+
+    def evaluate(self, obj: Item) -> str:  # pragma: no cover - structural typing only
+        """Return evaluated text value for item."""
+        ...
+
+    def sort_key(self, obj: Item):  # pragma: no cover - optional
+        """Return sort key for item, if supported."""
+        ...
+
+
+# Type alias for providers accepted by delegate columns / factories
+DelegateColumnProvider: TypeAlias = DelegateProvider | DelegateAdapter
