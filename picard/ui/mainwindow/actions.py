@@ -463,7 +463,28 @@ def _create_enable_moving_action(parent):
     action = QtGui.QAction(_("&Move Files"), parent)
     action.setCheckable(True)
     action.setChecked(config.setting['move_files'])
+    # Disable when symlink mode is enabled (mutually exclusive)
+    try:
+        action.setEnabled(not config.setting['symlink_files'])
+    except KeyError:
+        # Backwards compatibility if setting not present
+        pass
     action.triggered.connect(parent.toggle_move_files)
+    return action
+
+
+@add_action(MainAction.ENABLE_SYMLINKING)
+def _create_enable_symlinking_action(parent):
+    config = get_config()
+    action = QtGui.QAction(_("&Symlink Files"), parent)
+    action.setCheckable(True)
+    checked = config.setting['symlink_files']
+    action.setChecked(checked)
+    # When symlink is enabled disable Move Files action
+    if checked and parent.actions.get(MainAction.ENABLE_MOVING):
+        parent.actions[MainAction.ENABLE_MOVING].setEnabled(False)
+        parent.actions[MainAction.ENABLE_MOVING].setChecked(False)
+    action.triggered.connect(parent.toggle_symlink_files)
     return action
 
 

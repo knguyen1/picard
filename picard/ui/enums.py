@@ -72,6 +72,7 @@ class MainAction(str, Enum):
     CUT = 'cut_action'
     DONATE = 'donate_action'
     ENABLE_MOVING = 'enable_moving_action'
+    ENABLE_SYMLINKING = 'enable_symlinking_action'
     ENABLE_RENAMING = 'enable_renaming_action'
     ENABLE_TAG_SAVING = 'enable_tag_saving_action'
     EXIT = 'exit_action'

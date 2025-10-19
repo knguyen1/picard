@@ -53,6 +53,7 @@ from functools import partial
 import itertools
 import os.path
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -300,17 +301,58 @@ class MainWindow(QtWidgets.QMainWindow, PreserveGeometry):
         get_config().setting.setting_changed.connect(self.handle_settings_changed)
         get_config().profiles.setting_changed.connect(self.handle_profiles_changed)
 
-    def handle_settings_changed(self, name, old_value, new_value):
-        if name == 'rename_files':
-            self.actions[MainAction.ENABLE_RENAMING].setChecked(new_value)
-        elif name == 'move_files':
-            self.actions[MainAction.ENABLE_MOVING].setChecked(new_value)
-        elif name == 'enable_tag_saving':
-            self.actions[MainAction.ENABLE_TAG_SAVING].setChecked(new_value)
-        elif name in {'file_renaming_scripts', 'selected_file_naming_script_id'}:
-            self._make_script_selector_menu()
+    def handle_settings_changed(self, name: str, _old_value: Any, new_value: Any) -> None:
+        """React to changes in application settings.
 
-        # Also update items in quick settings if needed
+        Parameters
+        ----------
+        name : str
+            The name/key of the changed setting.
+        _old_value : Any
+            (unused) The previous value of the setting.
+        new_value : Any
+            The new value of the setting.
+        """
+        # Dispatch to dedicated handlers (SRP via Strategy)
+        handlers = {
+            'rename_files': self._handle_rename_files_changed,
+            'move_files': self._handle_move_files_changed,
+            'symlink_files': self._handle_symlink_files_changed,
+            'enable_tag_saving': self._handle_enable_tag_saving_changed,
+        }
+
+        if name in handlers:
+            handlers[name](new_value)
+        elif name in {'file_renaming_scripts', 'selected_file_naming_script_id'}:
+            self._handle_scripts_related_changed()
+
+        # Update quick settings menu if this setting is listed there
+        self._refresh_quick_settings_if_needed(name)
+
+    def _handle_rename_files_changed(self, new_value: bool) -> None:
+        self.actions[MainAction.ENABLE_RENAMING].setChecked(new_value)
+
+    def _handle_move_files_changed(self, new_value: bool) -> None:
+        self.actions[MainAction.ENABLE_MOVING].setChecked(new_value)
+
+    def _handle_symlink_files_changed(self, new_value: bool) -> None:
+        # When symlink mode toggles, update Move Files action enablement
+        self.actions[MainAction.ENABLE_MOVING].setEnabled(not new_value)
+        if new_value and self.actions[MainAction.ENABLE_MOVING].isChecked():
+            # Uncheck and disable Move Files when symlink mode is ON
+            self.actions[MainAction.ENABLE_MOVING].setChecked(False)
+            get_config().setting['move_files'] = False
+        # Reflect checkbox state on the action if present
+        if self.actions.get(MainAction.ENABLE_SYMLINKING):
+            self.actions[MainAction.ENABLE_SYMLINKING].setChecked(new_value)
+
+    def _handle_enable_tag_saving_changed(self, new_value: bool) -> None:
+        self.actions[MainAction.ENABLE_TAG_SAVING].setChecked(new_value)
+
+    def _handle_scripts_related_changed(self) -> None:
+        self._make_script_selector_menu()
+
+    def _refresh_quick_settings_if_needed(self, name: str) -> None:
         config = get_config()
         if name in config.setting['quick_menu_items']:
             self._make_settings_selector_menu()
@@ -779,7 +821,24 @@ class MainWindow(QtWidgets.QMainWindow, PreserveGeometry):
 
     def toggle_move_files(self, checked):
         config = get_config()
-        config.setting['move_files'] = checked
+        # Ignore toggling if symlink mode is active
+        if not config.setting['symlink_files']:
+            config.setting['move_files'] = checked
+        self._update_script_editor_examples()
+
+    def toggle_symlink_files(self, checked):
+        """Toggle symlink mode and enforce mutual exclusivity with Move Files."""
+        config = get_config()
+        config.setting['symlink_files'] = checked
+        if checked:
+            # Force move_files off and disable its action
+            config.setting['move_files'] = False
+            if self.actions.get(MainAction.ENABLE_MOVING):
+                self.actions[MainAction.ENABLE_MOVING].setChecked(False)
+                self.actions[MainAction.ENABLE_MOVING].setEnabled(False)
+        else:
+            if self.actions.get(MainAction.ENABLE_MOVING):
+                self.actions[MainAction.ENABLE_MOVING].setEnabled(True)
         self._update_script_editor_examples()
 
     def toggle_tag_saving(self, checked):
@@ -790,6 +849,10 @@ class MainWindow(QtWidgets.QMainWindow, PreserveGeometry):
         config = get_config()
         self.actions[MainAction.ENABLE_RENAMING].setChecked(config.setting['rename_files'])
         self.actions[MainAction.ENABLE_MOVING].setChecked(config.setting['move_files'])
+        if self.actions.get(MainAction.ENABLE_SYMLINKING):
+            self.actions[MainAction.ENABLE_SYMLINKING].setChecked(config.setting['symlink_files'])
+            # Keep mutual exclusivity reflected in UI
+            self.actions[MainAction.ENABLE_MOVING].setEnabled(not config.setting['symlink_files'])
         self.actions[MainAction.ENABLE_TAG_SAVING].setChecked(config.setting['enable_tag_saving'])
         self._make_script_selector_menu()
         self._init_cd_lookup_menu()
@@ -874,6 +937,7 @@ class MainWindow(QtWidgets.QMainWindow, PreserveGeometry):
             _("&Options"),
             MainAction.ENABLE_RENAMING,
             MainAction.ENABLE_MOVING,
+            MainAction.ENABLE_SYMLINKING,
             MainAction.ENABLE_TAG_SAVING,
             '-',
             self.script_quick_selector_menu,
@@ -952,8 +1016,9 @@ class MainWindow(QtWidgets.QMainWindow, PreserveGeometry):
             action = self.actions[action_id]
             toolbar.addAction(action)
             widget = toolbar.widgetForAction(action)
-            widget.setFocusPolicy(QtCore.Qt.FocusPolicy.TabFocus)
-            widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_MacShowFocusRect)
+            if widget is not None:
+                widget.setFocusPolicy(QtCore.Qt.FocusPolicy.TabFocus)
+                widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_MacShowFocusRect)
 
         config = get_config()
         for action_name in config.setting['toolbar_layout']:

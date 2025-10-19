@@ -50,6 +50,7 @@ from enum import (
     Enum,
     auto,
 )
+import errno
 import fnmatch
 from functools import partial
 import os
@@ -381,50 +382,84 @@ class File(MetadataItem):
         return (st.st_atime_ns, st.st_mtime_ns)
 
     def _save_and_rename(self, old_filename, metadata):
-        """Save the metadata."""
+        """Save the metadata and perform any post-save file operations."""
         config = get_config()
-        # Check that file has not been removed since thread was queued
-        # Also don't save if we are stopping.
+        # Abort early if we cannot or should not proceed
         if self.state == File.REMOVED:
             log.debug("File not saved because it was removed: %r", self.filename)
             return None
         if self.tagger.stopping:
             log.debug("File not saved because %s is stopping: %r", PICARD_APP_NAME, self.filename)
             return None
-        new_filename = old_filename
-        if config.setting['enable_tag_saving']:
-            save = partial(self._save, old_filename, metadata)
-            if config.setting['preserve_timestamps']:
-                try:
-                    self._preserve_times(old_filename, save)
-                except self.PreserveTimesUtimeError as why:
-                    log.warning(why)
-            else:
-                save()
-        # Rename files
-        if config.setting['rename_files'] or config.setting['move_files']:
-            new_filename = self._rename(old_filename, metadata, config.setting)
-        # Move extra files (images, playlists, etc.)
+
+        # 1) Persist tags to file (if enabled)
+        self._execute_save(old_filename, metadata, config)
+
+        # 2) Determine final path (rename / move / symlink)
+        new_filename = self._relocate_if_required(old_filename, metadata, config)
+
+        # 3) Handle related filesystem updates
         self._move_additional_files(old_filename, new_filename, config)
-        # Delete empty directories
-        if config.setting['delete_empty_dirs']:
-            dirname = os.path.dirname(old_filename)
+        self._delete_empty_dirs_if_enabled(old_filename, config)
+        self._save_images_if_configured(new_filename, metadata, config)
+
+        return new_filename
+
+    def _execute_save(self, old_filename, metadata, config):
+        """Execute tag saving honoring timestamp preservation and enablement."""
+        if not config.setting['enable_tag_saving']:
+            return
+        save = partial(self._save, old_filename, metadata)
+        if config.setting['preserve_timestamps']:
             try:
-                emptydir.rm_empty_dir(dirname)
-                head, tail = os.path.split(dirname)
-                if not tail:
-                    head, tail = os.path.split(head)
-                while head and tail:
-                    emptydir.rm_empty_dir(head)
-                    head, tail = os.path.split(head)
-            except OSError as why:
-                log.warning("Error removing directory: %s", why)
-            except emptydir.SkipRemoveDir as why:
-                log.debug("Not removing empty directory: %s", why)
-        # Save cover art images
+                self._preserve_times(old_filename, save)
+            except self.PreserveTimesUtimeError as why:
+                log.warning(why)
+        else:
+            save()
+
+    def _relocate_if_required(self, old_filename, metadata, config):
+        """Rename, move or create a symlink if any of those are configured."""
+        settings = config.setting
+        if not (settings['rename_files'] or settings['move_files'] or settings['symlink_files']):
+            return old_filename
+
+        if settings['symlink_files']:
+            target_filename = self.make_filename(old_filename, metadata, settings)
+            try:
+                self._ensure_parent_dir(target_filename)
+                self._create_symlink(old_filename, target_filename)
+            except (OSError, NotImplementedError) as why:
+                log.error("Failed to create symlink %r -> %r: %s", target_filename, old_filename, why)
+                return old_filename
+            else:
+                log.debug("Created symlink %r -> %r", target_filename, old_filename)
+                return target_filename
+
+        return self._rename(old_filename, metadata, settings)
+
+    def _delete_empty_dirs_if_enabled(self, old_filename, config):
+        """Delete empty directories if enabled in settings starting from the old path."""
+        if not config.setting['delete_empty_dirs']:
+            return
+        dirname = os.path.dirname(old_filename)
+        try:
+            emptydir.rm_empty_dir(dirname)
+            head, tail = os.path.split(dirname)
+            if not tail:
+                head, tail = os.path.split(head)
+            while head and tail:
+                emptydir.rm_empty_dir(head)
+                head, tail = os.path.split(head)
+        except OSError as why:
+            log.warning("Error removing directory: %s", why)
+        except emptydir.SkipRemoveDir as why:
+            log.debug("Not removing empty directory: %s", why)
+
+    def _save_images_if_configured(self, new_filename, metadata, config):
+        """Save cover art images next to the new file if configured."""
         if config.setting['save_images_to_files']:
             self._save_images(os.path.dirname(new_filename), metadata)
-        return new_filename
 
     def _saving_finished(self, result=None, error=None):
         # Handle file removed before save
@@ -435,7 +470,8 @@ class File(MetadataItem):
         if error is not None:
             self._set_error(error)
         else:
-            self.filename = new_filename = result
+            # Ensure type correctness for path handling
+            self.filename = new_filename = str(result)
             self.base_filename = os.path.basename(new_filename)
             length = self.orig_metadata.length
             temp_info = {}
@@ -533,7 +569,7 @@ class File(MetadataItem):
             new_filename = self._script_to_filename(naming_format, metadata, ext, settings)
             if not settings['rename_files']:
                 new_filename = os.path.join(os.path.dirname(new_filename), old_filename)
-            if not settings['move_files']:
+            if not settings['move_files'] and not settings['symlink_files']:
                 new_filename = os.path.basename(new_filename)
             win_compat = IS_WIN or settings['windows_compatibility']
             win_shorten_path = win_compat and not settings['windows_long_paths']
@@ -548,7 +584,7 @@ class File(MetadataItem):
             settings = config.setting
         if naming_format is None:
             naming_format = get_file_naming_script(settings)
-        if settings['move_files']:
+        if settings['move_files'] or settings['symlink_files']:
             new_dirname = settings['move_files_to']
             if not is_absolute_path(new_dirname):
                 new_dirname = os.path.join(os.path.dirname(filename), new_dirname)
@@ -556,7 +592,7 @@ class File(MetadataItem):
             new_dirname = os.path.dirname(filename)
         new_filename = os.path.basename(filename)
 
-        if settings['rename_files'] or settings['move_files']:
+        if settings['rename_files'] or settings['move_files'] or settings['symlink_files']:
             new_filename = self._format_filename(new_dirname, new_filename, metadata, settings, naming_format)
 
         new_path = os.path.join(new_dirname, new_filename)
@@ -626,16 +662,62 @@ class File(MetadataItem):
                             break  # we are done with this file
 
     def _apply_additional_files_moves(self, moves):
+        config = get_config()
         for old_file_path, new_file_path in moves:
             # FIXME we shouldn't do this from a thread!
             if self.tagger.files.get(decode_filename(old_file_path)):
                 log.debug("File loaded in the tagger, not moving %r", old_file_path)
                 continue
-            log.debug("Moving %r to %r", old_file_path, new_file_path)
-            try:
-                shutil.move(old_file_path, new_file_path)
-            except OSError as why:
-                log.error("Failed to move %r to %r: %s", old_file_path, new_file_path, why)
+            if config.setting['symlink_files']:
+                try:
+                    self._ensure_parent_dir(new_file_path)
+                    # Avoid collisions
+                    new_file_path = get_available_filename(new_file_path, old_file_path)
+                    self._create_symlink(old_file_path, new_file_path)
+                    log.debug("Created symlink for additional file %r -> %r", new_file_path, old_file_path)
+                except (OSError, NotImplementedError) as why:
+                    log.error("Failed to symlink %r -> %r: %s", new_file_path, old_file_path, why)
+            else:
+                log.debug("Moving %r to %r", old_file_path, new_file_path)
+                try:
+                    shutil.move(old_file_path, new_file_path)
+                except OSError as why:
+                    log.error("Failed to move %r to %r: %s", old_file_path, new_file_path, why)
+
+    @staticmethod
+    def _ensure_parent_dir(path):
+        parent = os.path.dirname(path)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent)
+
+    @staticmethod
+    def _create_symlink(source_path: str, link_path: str) -> None:
+        """Create a symbolic link at link_path pointing to source_path.
+
+        On Windows this requires appropriate privileges or developer mode.
+        Raises OSError / NotImplementedError on failure.
+        """
+        # Normalize paths
+        source_path = os.path.normpath(source_path)
+        link_path = os.path.normpath(link_path)
+        # If link already exists and points to the same source, nothing to do
+        try:
+            if os.path.islink(link_path):
+                existing_target = os.readlink(link_path)
+                # Compare with normpath; absolute/relative differences may exist
+                if os.path.abspath(existing_target) == os.path.abspath(source_path):
+                    return
+                # Recreate link if pointing elsewhere
+                os.remove(link_path)
+        except OSError as ex:
+            # If the path exists but is not a symlink, propagate below to failure on symlink
+            if ex.errno not in (errno.ENOENT,):
+                raise
+        # Ensure destination does not exist as a regular file/dir
+        if os.path.exists(link_path) and not os.path.islink(link_path):
+            raise OSError(errno.EEXIST, f"Destination exists and is not a symlink: {link_path}")
+        # Create the symlink
+        os.symlink(source_path, link_path, target_is_directory=False)
 
     def remove(self, from_parent_item=True):
         if from_parent_item and self.parent_item:

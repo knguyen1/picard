@@ -426,6 +426,7 @@ ListOption('setting', 'release_type_scores', DEFAULT_RELEASE_TYPE_SCORES, title=
 BoolOption('setting', 'delete_empty_dirs', True, title=N_("Delete empty directories"))
 BoolOption('setting', 'move_additional_files', False, title=N_("Move additional files"))
 TextOption('setting', 'move_additional_files_pattern', "*.jpg *.png", title=N_("Additional file patterns"))
+BoolOption('setting', 'symlink_files', False, title=N_("Create symlinks instead of moving files"))
 BoolOption('setting', 'move_files', False, title=N_("Move files"))
 TextOption('setting', 'move_files_to', DEFAULT_MUSIC_DIR, title=N_("Destination directory"))
 BoolOption('setting', 'rename_files', False, title=N_("Rename files"))

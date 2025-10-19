@@ -335,12 +335,24 @@ class WavPackFile(APEv2File):
             return
         wvc_new_filename = replace_extension(new_filename, ".wvc")
         wvc_new_filename = get_available_filename(wvc_new_filename, wvc_filename)
-        log.debug('Moving Wavepack correction file %r => %r', wvc_filename, wvc_new_filename)
-        move_ensure_casing(wvc_filename, wvc_new_filename)
+        config = get_config()
+        if config.setting['symlink_files']:
+            # Mirror symlink behavior for correction file
+            from picard.file import File  # local import to avoid cycles at module import
+
+            try:
+                File._ensure_parent_dir(wvc_new_filename)
+                File._create_symlink(wvc_filename, wvc_new_filename)
+                log.debug('Symlinked WavPack correction file %r -> %r', wvc_new_filename, wvc_filename)
+            except (OSError, NotImplementedError):
+                log.exception('Failed to symlink WavPack correction file %r -> %r', wvc_new_filename, wvc_filename)
+        else:
+            log.debug('Moving Wavepack correction file %r => %r', wvc_filename, wvc_new_filename)
+            move_ensure_casing(wvc_filename, wvc_new_filename)
 
     def _move_additional_files(self, old_filename, new_filename, config):
         """Includes an additional check for WavPack correction files"""
-        if config.setting['rename_files'] or config.setting['move_files']:
+        if config.setting['rename_files'] or config.setting['move_files'] or config.setting['symlink_files']:
             self._move_or_rename_wvc(old_filename, new_filename)
         return super()._move_additional_files(old_filename, new_filename, config)
 
@@ -397,7 +409,7 @@ class AACFile(APEv2File):
         elif config.setting['remove_ape_from_aac']:
             try:
                 mutagen.apev2.delete(encode_filename(filename))
-            except BaseException:
+            except (mutagen.apev2.APENoHeaderError, mutagen.apev2.error, OSError):
                 log.exception("Error removing APEv2 tags from %s", filename)
 
     @classmethod

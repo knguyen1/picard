@@ -78,6 +78,7 @@ class RenamingOptionsPage(OptionsPage):
         ('move_additional_files_pattern', ['move_additional_files_pattern']),
         ('delete_empty_dirs', ['delete_empty_dirs']),
         ('rename_files', ['rename_files']),
+        ('symlink_files', []),
         ('selected_file_naming_script_id', ['naming_script_selector']),
     )
 
@@ -197,6 +198,12 @@ class RenamingOptionsPage(OptionsPage):
         ScriptingDocumentationDialog.show_instance(parent=self)
 
     def toggle_file_naming_format(self, state):
+        # Disable Move Files UI when symlink mode is enabled
+        config = get_config()
+        is_symlink_mode = config.setting['symlink_files']
+        self.ui.move_files.setEnabled(not is_symlink_mode)
+        if is_symlink_mode and self.ui.move_files.isChecked():
+            self.ui.move_files.setChecked(False)
         active = self.ui.move_files.isChecked() or self.ui.rename_files.isChecked()
         self.ui.open_script_editor.setEnabled(active)
 
@@ -217,6 +224,7 @@ class RenamingOptionsPage(OptionsPage):
         override['move_files'] = self.ui.move_files.isChecked()
         override['move_files_to'] = os.path.normpath(self.ui.move_files_to.text())
         override['rename_files'] = self.ui.rename_files.isChecked()
+        override['symlink_files'] = get_config().setting['symlink_files']
         self.examples.update_examples(override=override)
         self.update_displayed_examples()
 
@@ -240,6 +248,8 @@ class RenamingOptionsPage(OptionsPage):
         config = get_config()
         self.ui.rename_files.setChecked(config.setting['rename_files'])
         self.ui.move_files.setChecked(config.setting['move_files'])
+        # Enforce UI state when symlink mode is active
+        self.ui.move_files.setEnabled(not config.setting['symlink_files'])
         self.ui.move_files_to.setText(config.setting['move_files_to'])
         self.ui.move_files_to.setCursorPosition(0)
         self.ui.move_additional_files.setChecked(config.setting['move_additional_files'])
@@ -275,7 +285,11 @@ class RenamingOptionsPage(OptionsPage):
     def save(self):
         config = get_config()
         config.setting['rename_files'] = self.ui.rename_files.isChecked()
-        config.setting['move_files'] = self.ui.move_files.isChecked()
+        # Respect symlink mode mutual exclusion
+        if not config.setting['symlink_files']:
+            config.setting['move_files'] = self.ui.move_files.isChecked()
+        else:
+            config.setting['move_files'] = False
         config.setting['move_files_to'] = os.path.normpath(self.ui.move_files_to.text())
         config.setting['move_additional_files'] = self.ui.move_additional_files.isChecked()
         config.setting['move_additional_files_pattern'] = self.ui.move_additional_files_pattern.text()
